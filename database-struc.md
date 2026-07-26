@@ -5,7 +5,7 @@ Now let me pull the core table list from the canonical Prisma schema, plus check
 One thing worth flagging from building this: `auth-service-dev` has its own `schema.prisma` defining a mostly-duplicate table set (lowercase naming — `patient`, `physician`, `form_response`, `pro_score`, `lost_info`, etc.) separate from `common-library-dev`'s canonical schema, but with zero migrations applied. That's either an unused scaffold or a real risk if someone runs a migration against it not realizing it diverges from the schema everything else actually uses — worth a quick check with your lead.
 
 ---
-# SPRI Platform — Database Objects Reference (Tables, Procedures, Triggers, Flow)
+## SPRI Platform — Database Objects Reference (Tables, Procedures, Triggers, Flow)
 
 Source: `common-library-dev/prisma/schema.prisma` (canonical schema) and
 `common-library-dev/prisma/migrations/20260623120000_pro_score_db_implementation_v11/migration.sql`
