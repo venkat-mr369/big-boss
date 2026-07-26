@@ -1,393 +1,792 @@
-### Step 1 – Business Overview (SPRI)
+Excellent. From now on we'll think like a **Database Architect** rather than just a SQL developer.
 
-### Imagine this real-world scenario
+Up to now you've learned:
 
-A patient injures their knee while playing cricket.
+* Step 1 → Business
+* Step 2 → Database Overview
+* Step 3 → Stored Procedure Flow
+* Step 4 → End-to-End Application Flow
+* Step 5 → Repository Architecture
+* Step 6 → Database Objects
 
-The patient visits **Steadman Philippon Research Institute (SPRI)**.
-
-The doctor examines the patient and performs surgery.
-
-However, surgery is not the end.
-
-The doctor wants to monitor the patient's recovery for several months.
-
-Questions like:
-
-* Is the pain decreasing?
-* Can the patient walk normally?
-* Can they climb stairs?
-* Can they play sports again?
-* Is the surgery successful?
-
-Instead of asking these questions during every hospital visit, the hospital sends an **online survey** to the patient.
+Now we'll connect everything.
 
 ---
 
-# Business Flow
+# Step 7 – Database Schema & Relationships
+
+A database is not a collection of independent tables.
+
+It is a **network of related tables**.
+
+Think of it as a family tree.
 
 ```text
-Patient gets surgery
-        │
-        ▼
-Hospital creates patient
-        │
-        ▼
-Survey is assigned
-        │
-        ▼
-Patient receives email
-        │
-        ▼
-Patient opens survey
-        │
-        ▼
-Patient submits answers
-        │
-        ▼
-System calculates medical score
-        │
-        ▼
-Doctor reviews recovery
+Father
+   │
+   ├── Son
+   ├── Daughter
+   └── Grandchildren
 ```
 
-This is the complete business process.
-
----
-
-# Who are the users?
-
-## 1. Patient
-
-Uses only the survey.
-
-Example:
-
-* Opens survey link
-* Answers questions
-* Clicks Submit
-
-Patient never logs into the SPRI application.
-
----
-
-## 2. Doctor
-
-Uses the SPRI web application.
-
-Doctor can:
-
-* Search patients
-* View appointments
-* View surgery details
-* View PRO Scores
-* Compare previous scores
-
----
-
-## 3. Receptionist
-
-Uses the application to:
-
-* Register patients
-* Schedule appointments
-* Update demographics
-
----
-
-## 4. Database Developer (You)
-
-You don't create surveys.
-
-You don't treat patients.
-
-Your job is to make sure:
-
-* Data is saved correctly
-* Stored Procedures work
-* Scores are calculated
-* Reports are accurate
-* Migrations run successfully
-* Production issues are fixed
-
-That's why Jira tickets like SOPMP-1609 and SOPMP-1669 come to you.
-
----
-
-# Main Modules
-
-Think of the project as several departments.
-
-```text
-SPRI
-│
-├── Patient Management
-├── Appointment Management
-├── Survey Management
-├── PRO Score Calculation
-├── Reporting
-└── Database Migration
-```
-
----
-
-# Patient Journey
-
-Let's follow one patient.
-
-Patient:
-
-```text
-John
-```
-
-### Step 1
-
-Receptionist creates John.
-
-Database:
+Similarly,
 
 ```text
 patient
-(TABLE)
+   │
+   ├── appointment
+   ├── patient_survey
+   ├── form_response
+   └── pro_score
 ```
 
-Stores:
+Everything revolves around the patient.
 
-* Name
-* DOB
-* MRN
-* Phone
+---
+
+# Database ER Diagram (High Level)
+
+```text
+                           patient
+                    (Master Table)
+                          │
+        ┌─────────────────┼──────────────────┐
+        │                 │                  │
+        ▼                 ▼                  ▼
+ appointment      patient_survey        patient_note
+        │                 │
+        │                 ▼
+        │          survey_definition
+        │
+        ▼
+ form_response
+        │
+        ▼
+ pro_score
+```
+
+Think of this as the backbone of the application.
+
+---
+
+# 1. patient (Master Table)
+
+This is the center of the database.
+
+```text
+patient
+```
+
+Example
+
+| patient_id | Name | MRN   |
+| ---------- | ---- | ----- |
+| 1001       | John | MR001 |
+
+Every other table ultimately refers to this patient.
+
+---
+
+## Relationships
+
+```text
+patient
+
+↓
+
+appointment
+
+↓
+
+patient_survey
+
+↓
+
+form_response
+
+↓
+
+pro_score
+```
+
+---
+
+# Cardinality
+
+One patient
+
+↓
+
+Many appointments
+
+```text
+Patient
+
+↓
+
+Appointment 1
+
+Appointment 2
+
+Appointment 3
+```
+
+Database notation
+
+```text
+1 ---- N
+```
+
+---
+
+# Patient → Appointment
+
+```text
+patient
+---------------------
+patient_id (PK)
+
+appointment
+---------------------
+appointment_id (PK)
+
+patient_id (FK)
+```
+
+Relationship
+
+```text
+One Patient
+
+↓
+
+Many Appointments
+```
+
+---
+
+# Patient → Surveys
+
+One patient may receive multiple surveys.
+
+Example
+
+```text
+John
+
+↓
+
+Pre Surgery Survey
+
+↓
+
+6 Weeks Survey
+
+↓
+
+3 Months Survey
+
+↓
+
+1 Year Survey
+```
+
+Database
+
+```text
+patient
+
+↓
+
+patient_survey
+```
+
+---
+
+# Patient → Survey Response
+
+Every assigned survey may produce one response.
+
+```text
+patient
+
+↓
+
+patient_survey
+
+↓
+
+form_response
+```
+
+Example
+
+```text
+Survey Assigned
+
+↓
+
+Patient Submitted
+
+↓
+
+Response Saved
+```
+
+---
+
+# Patient → PRO Score
+
+Each completed survey generates one or more scores.
+
+```text
+patient
+
+↓
+
+form_response
+
+↓
+
+pro_score
+```
+
+Example
+
+```text
+Patient
+
+↓
+
+Survey
+
+↓
+
+Harris Score
+
+↓
+
+IKDC Score
+
+↓
+
+WOMAC Score
+```
+
+---
+
+# One-to-Many Relationships
+
+The most common relationship.
+
+Example
+
+```text
+Patient
+
+↓
+
+Appointment
+
+Appointment
+
+Appointment
+
+Appointment
+```
+
+Database
+
+```text
+patient
+
+1
+
+↓
+
+N
+
+appointment
+```
+
+---
+
+# One-to-One Relationship
+
+Sometimes
+
+One record
+
+↓
+
+One record
+
+Example
+
+```text
+Patient
+
+↓
+
+Patient Profile
+```
+
+```text
+1
+
+↓
+
+1
+```
+
+---
+
+# Many-to-Many
+
+Imagine
+
+Doctors
+
+↓
+
+Patients
+
+One doctor sees many patients.
+
+One patient visits many doctors.
+
+```text
+Doctor
+
+⇄
+
+Patient
+```
+
+Database cannot store directly.
+
+Need bridge table.
+
+```text
+doctor
+
+↓
+
+doctor_patient
+
+↓
+
+patient
+```
+
+---
+
+# Why Foreign Keys Exist
+
+Suppose appointment table contains
+
+```text
+patient_id = 5000
+```
+
+But patient
+
+5000
+
+doesn't exist.
+
+Database becomes inconsistent.
+
+Foreign Key prevents this.
+
+```text
+patient
+
+1001
+
+↓
+
+appointment
+
+patient_id=1001
+
+✓ Valid
+```
+
+---
+
+# Normalized Design
+
+Instead of storing
+
+```text
+John
+
+MR001
+
+John
+
+MR001
+
+John
+
+MR001
+```
+
+inside every table,
+
+store only
+
+```text
+patient_id
+```
+
+Example
+
+Patient Table
+
+| patient_id | Name |
+| ---------- | ---- |
+| 1001       | John |
+
+Appointment
+
+| appointment | patient_id |
+| ----------- | ---------- |
+| 2001        | 1001       |
+
+Survey
+
+| survey | patient_id |
+| ------ | ---------- |
+| 3001   | 1001       |
+
+No duplicate data.
+
+---
+
+# Complete Patient Journey
+
+Let's follow John.
+
+---
+
+### Step 1
+
+Patient Created
+
+```text
+patient
+```
+
+| patient_id | Name |
+| ---------- | ---- |
+| 1001       | John |
 
 ---
 
 ### Step 2
 
-Doctor creates appointment.
-
-Database:
+Appointment
 
 ```text
 appointment
-(TABLE)
 ```
 
-Stores:
-
-* Appointment Date
-* Doctor
-* Facility
-* Joint Type
+| appointment | patient_id |
+| ----------- | ---------- |
+| 2001        | 1001       |
 
 ---
 
 ### Step 3
 
-Doctor decides
-
-> "Send Knee Survey."
-
-Database creates
+Survey Assigned
 
 ```text
 patient_survey
-(TABLE)
 ```
 
-This tells the system:
-
-> John should complete a Knee Survey.
+| survey | patient_id |
+| ------ | ---------- |
+| 3001   | 1001       |
 
 ---
 
 ### Step 4
 
-System sends email.
-
-Email contains
+Patient Submits
 
 ```text
-https://fs7.formsite....
+form_response
 ```
 
-Patient clicks it.
+| response | patient_id |
+| -------- | ---------- |
+| 4001     | 1001       |
 
 ---
 
 ### Step 5
 
-Patient answers survey.
-
-Example
+Score Created
 
 ```text
-Pain = 7
-
-Walking = Yes
-
-Running = No
+pro_score
 ```
 
-Clicks
+| score_id | patient_id |
+| -------- | ---------- |
+| 5001     | 1001       |
+
+---
+
+Everything is connected through
 
 ```text
-Submit
+patient_id
 ```
 
 ---
 
-### Step 6
-
-Survey reaches your database.
-
-Stored in
+# Real Database Flow
 
 ```text
+patient
+   │
+   ▼
+appointment
+   │
+   ▼
+patient_survey
+   │
+   ▼
 form_response
-(TABLE)
-```
-
-Nothing has been calculated yet.
-
----
-
-### Step 7
-
-Stored Procedures calculate scores.
-
-Example
-
-```text
-IKDC
-
-WOMAC
-
-Harris
-
-VHS
-```
-
-Results are stored in
-
-```text
-pro_score
-(TABLE)
-```
-
----
-
-### Step 8
-
-Doctor opens Dashboard.
-
-The application reads
-
-```text
+   │
+   ▼
 pro_score
 ```
 
-and displays
+Notice something.
 
-```text
-Patient Score
+Each table stores **different information**.
 
-Previous Score
-
-Improvement
-
-Graphs
-```
+No table stores everything.
 
 ---
 
-# Why are PRO Scores important?
+# Why Split into Multiple Tables?
 
-Doctors don't want to read 80 survey answers every time.
-
-Instead of seeing:
+Suppose everything was stored in one table.
 
 ```text
-Pain = 6
+Patient
 
-Walking = Yes
+Appointment
 
-Sports = Sometimes
+Survey
 
-Running = No
+Doctor
 
-Swelling = Mild
+Hospital
+
+Score
+
+Address
+
+Phone
+
+Pain
+
+Walking
+
+Sports
 
 ...
 ```
 
-They see:
+Imagine
 
-```text
-Harris Hip Score = 91
+100 columns
 
-WOMAC = 84
+Millions of rows.
 
-IKDC = 76
-```
+Problems
 
-These are standardized medical scores that summarize the patient's recovery.
+❌ Duplicate data
 
----
+❌ Slow updates
 
-# Where does your work begin?
+❌ Large storage
 
-As a Database Developer, your work starts **after the patient clicks Submit**.
+❌ Difficult maintenance
+
+Instead
+
+Split logically.
 
 ```text
 Patient
-   │
-Submit Survey
-   │
-   ▼
-Database
-   │
-   ▼
-Tables
-   │
-   ▼
-Triggers
-   │
-   ▼
-Stored Procedures
-   │
-   ▼
-PRO Score
+
+Appointment
+
+Survey
+
+Score
 ```
 
-This is the part you are responsible for.
+Each table has one responsibility.
 
 ---
 
-# In the SPRI project, you mainly work with these database objects
+# Primary Keys
 
-| Object           | Example                                  | Purpose                                                                 |
-| ---------------- | ---------------------------------------- | ----------------------------------------------------------------------- |
-| TABLE            | `patient`                                | Patient information                                                     |
-| TABLE            | `appointment`                            | Appointment details                                                     |
-| TABLE            | `patient_survey`                         | Survey assigned to a patient                                            |
-| TABLE            | `form_response`                          | Raw survey answers                                                      |
-| TABLE            | `pro_score`                              | Calculated medical scores                                               |
-| TRIGGER          | `trg_form_response_ai_pro_score`         | Automatically starts score calculation after a survey response is saved |
-| STORED PROCEDURE | `spri_apply_pro_score_for_form_response` | Creates or updates the PRO score                                        |
-| STORED PROCEDURE | `spri_pro_calculate_for_response`        | Calculates the medical scores                                           |
-| STORED PROCEDURE | `spri_pro_payload_json`                  | Reads and normalizes the survey JSON                                    |
+Every table has its own identity.
+
+```text
+patient
+
+patient_id
+```
+
+```text
+appointment
+
+appointment_id
+```
+
+```text
+form_response
+
+response_id
+```
+
+```text
+pro_score
+
+score_id
+```
+
+Primary Keys are unique within their own table.
 
 ---
 
-## Homework (important)
+# Foreign Keys
 
-Before we move to Step 2, make sure you can answer these questions yourself:
+Tables connect through foreign keys.
 
-1. What is the purpose of the SPRI project?
-2. Who uses the SPRI application?
-3. What is a PRO Score?
-4. Why is the `form_response` table needed?
-5. Why is the `pro_score` table needed?
-6. At what point does a Database Developer become involved in the workflow?
+```text
+appointment.patient_id
 
-Once you're comfortable with these, we'll continue to **Step 2: Database Architecture**, where we'll examine the major tables one by one, their relationships, and how data flows between them.
+↓
+
+patient.patient_id
+```
+
+```text
+form_response.patient_id
+
+↓
+
+patient.patient_id
+```
+
+```text
+pro_score.patient_id
+
+↓
+
+patient.patient_id
+```
+
+---
+
+# Complete Relationship Diagram
+
+```text
+                      patient
+                  PK: patient_id
+                         │
+      ┌──────────────────┼──────────────────┐
+      │                  │                  │
+      ▼                  ▼                  ▼
+appointment       patient_survey      patient_note
+PK appointment_id PK survey_id        PK note_id
+FK patient_id     FK patient_id       FK patient_id
+      │                  │
+      │                  ▼
+      │          survey_definition
+      │
+      ▼
+form_response
+PK response_id
+FK patient_id
+FK survey_id
+      │
+      ▼
+pro_score
+PK score_id
+FK patient_id
+FK response_id
+```
+
+---
+
+# Think Like an Architect
+
+When someone says:
+
+> "Patient score is missing."
+
+A Database Architect doesn't immediately open the `pro_score` table.
+
+They mentally trace the data flow:
+
+```text
+Was Patient Created?
+
+↓
+
+Was Appointment Created?
+
+↓
+
+Was Survey Assigned?
+
+↓
+
+Was Survey Submitted?
+
+↓
+
+Was Response Stored?
+
+↓
+
+Was Score Generated?
+
+↓
+
+Can UI Read It?
+```
+
+This mindset helps you identify where the process stopped instead of jumping straight to the last table.
+
+---
+
+# What You've Learned in Step 7
+
+You now understand:
+
+* How the database is organized around the **patient**.
+* Why tables are split by responsibility.
+* One-to-One, One-to-Many, and Many-to-Many relationships.
+* The purpose of Primary Keys and Foreign Keys.
+* How data flows from one table to another.
+* How to trace a patient's journey through the database.
+
+---
+
+## Next: Step 8 – Data Lifecycle
+
+In the next step, we'll follow **one patient record** from the moment it is created until years later when follow-up surveys, additional appointments, updated scores, reports, and archival come into play. This will help you understand how data evolves over time in the SPRI system, not just how it's stored.
