@@ -1,381 +1,280 @@
-Perfect. We'll completely ignore Jira and production bugs from now on. Let's learn the project like a new employee joining the team.
+Excellent. Since we've updated **Step 2 (Architecture)** and **Step 3 (Request Lifecycle)**, we should also replace the old **Step 4**.
+
+The old Step 4 was mostly about "Patient → Survey → Database". Now we have enough understanding to explain the **complete business process** from beginning to end. This is how I would write the new Step 4.
 
 ---
 
-# Step 4 – Complete Application Flow (End-to-End)
+# Step 4 – End-to-End Business Process
 
-In the previous steps, we focused mostly on the database.
+Now that we understand the system architecture and request lifecycle, let's understand the **complete business process** of the SPRI application.
 
-Now let's understand **how the entire application works**, from the moment a patient is created until a doctor views the results.
+This is the flow followed every day by doctors, receptionists, patients, and the backend services.
 
-Think of the system as different departments working together.
+Think of this as watching one patient move through the entire system.
+
+---
+
+# Complete Business Flow
 
 ```text
-                Receptionist
-                     │
-                     ▼
-              Patient Module
-                     │
-                     ▼
-          Appointment Module
-                     │
-                     ▼
-             Survey Assignment
-                     │
-                     ▼
-             Email Notification
-                     │
-                     ▼
-            Patient Completes Survey
-                     │
-                     ▼
-              Survey Processing
-                     │
-                     ▼
-            PRO Score Calculation
-                     │
-                     ▼
-             Doctor Dashboard
+Receptionist
+      │
+      ▼
+Create Patient
+      │
+      ▼
+Book Appointment
+      │
+      ▼
+Doctor Consultation
+      │
+      ▼
+Assign Survey
+      │
+      ▼
+Notification Service
+      │
+      ▼
+Patient Receives Email
+      │
+      ▼
+Patient Completes Survey
+      │
+      ▼
+Survey Processing
+      │
+      ▼
+Database Processing
+      │
+      ▼
+Score Calculation
+      │
+      ▼
+Doctor Dashboard
+      │
+      ▼
+Patient Follow-up
 ```
 
-Every box above is a module.
+This is the complete lifecycle of one patient.
 
 ---
 
-# Module 1 — Patient Management
+# Phase 1 – User Login
 
-### Type
-
-Business Module
-
-### Main Responsibility
-
-Maintain patient information.
-
----
-
-### Main Table
+Every staff member begins here.
 
 ```text
-patient
-(TABLE)
+Doctor
+
+↓
+
+Angular UI
+
+↓
+
+auth-service
+
+↓
+
+JWT Token
+
+↓
+
+Dashboard
 ```
 
-Stores
+Without authentication, the user cannot access the system.
 
-* Patient Name
-* DOB
-* Gender
-* MRN
-* Phone
-* Email
+---
 
-Example
+# Phase 2 – Patient Registration
+
+Usually performed by:
+
+* Receptionist
+* Front Desk
+* Clinical Staff
+
+Flow
 
 ```text
-Patient
+Receptionist
+
+↓
+
+Angular UI
+
+↓
+
+patient-service
 
 ↓
 
 Create Patient
+
+↓
+
+MariaDB
 
 ↓
 
 patient Table
 ```
 
+Patient information includes:
+
+* Name
+* MRN
+* DOB
+* Gender
+* Contact Information
+
 ---
 
-### APIs
+# Phase 3 – Appointment Scheduling
 
-Examples
+Once the patient exists,
+
+an appointment is created.
 
 ```text
-POST /patients
+Doctor
 
-GET /patients/{id}
+↓
 
-PUT /patients/{id}
+Appointment Module
+
+↓
+
+patient-service
+
+↓
+
+appointment Table
 ```
 
----
+Appointment stores
 
-### UI
-
-Receptionist Screen
-
-```text
-+-------------------------+
-
-Create Patient
-
-Name
-
-DOB
-
-Phone
-
-MRN
-
-Save
-
-+-------------------------+
-```
-
----
-
-# Module 2 — Appointment Management
-
-Once patient exists,
-
-doctor appointment is created.
-
----
-
-### Table
-
-```text
-appointment
-(TABLE)
-```
-
-Stores
-
-* Appointment Date
 * Doctor
-* Facility
+* Clinic
+* Date
+* Time
 * Visit Type
 
-Relationship
+---
 
-```text
-patient
+# Phase 4 – Doctor Consultation
 
-↓
+Patient visits hospital.
 
-appointment
-```
+Doctor
 
-One patient
+* examines patient
+* reviews history
+* decides treatment
+* decides whether a survey is required
 
-↓
+No survey is generated automatically.
 
-Many appointments
+The doctor or clinical workflow determines when to send one.
 
 ---
 
-### API
+# Phase 5 – Survey Assignment
 
-```text
-POST /appointments
-
-GET /appointments
-```
-
----
-
-### UI
-
-Doctor Calendar
-
-```text
-Monday
-
-10 AM
-
-John
-
-11 AM
-
-Smith
-
-12 PM
-
-Mary
-```
-
----
-
-# Module 3 — Survey Management
-
-Now doctor wants patient to answer a questionnaire.
-
-System assigns survey.
-
----
-
-### Table
-
-```text
-patient_survey
-(TABLE)
-```
-
-Stores
-
-```text
-Patient
-
-Survey
-
-Status
-
-Assigned Date
-```
-
-Status example
-
-```text
-Assigned
-
-Sent
-
-Completed
-
-Expired
-```
-
----
-
-### API
-
-```text
-POST /patient-surveys
-```
-
----
-
-### UI
-
-Doctor clicks
+Doctor selects
 
 ```text
 Assign Survey
 ```
 
+Flow
+
+```text
+Angular
+
+↓
+
+patient-service
+
+↓
+
+Survey Assignment
+
+↓
+
+Database
+
+↓
+
+notification-service
+```
+
+The system prepares
+
+* Survey
+* Patient
+* Expiry Date
+* Token
+
 ---
 
-# Module 4 — Notification
+# Phase 6 – Patient Notification
 
-Survey is assigned.
+notification-service now sends
 
-Now patient should receive it.
-
-System sends
-
+```text
 Email
 
 or
 
 SMS
+```
 
----
+Example
 
-Usually contains
+```text
+Dear John,
+
+Please complete your Knee Follow-up Survey.
+
+Click Here
+```
+
+Patient receives
 
 ```text
 Survey Link
-
-Patient Token
-
-Expiry Date
-```
-
-Example
-
-```text
-https://fs7.formsite.com/...
 ```
 
 ---
 
-Patient clicks.
+# Phase 7 – Patient Completes Survey
 
----
-
-# Module 5 — FormSite
-
-Notice something important.
-
-Patient is **NOT inside SPRI UI** anymore.
-
-Patient is now inside
+Patient opens
 
 ```text
 FormSite
 ```
 
-External Application.
+This is an external application.
 
-Flow
-
-```text
-SPRI
-
-↓
-
-Email
-
-↓
-
-FormSite
-
-↓
-
-Patient fills survey
-```
-
----
-
-### UI
+Patient answers questions.
 
 Example
 
 ```text
-Pain Level
+Pain
 
-( )
-
-0
-
-( )
-
-1
-
-( )
-
-2
-
-...
-
-10
-```
-
-Next Question
-
-```text
 Walking
 
-Yes
-
-No
-```
-
-Next
-
-```text
 Sports
 
-Daily
+Daily Activities
 
-Weekly
-
-Never
+Quality of Life
 ```
-
----
-
-# Module 6 — Survey Processing
 
 Patient clicks
 
@@ -383,61 +282,58 @@ Patient clicks
 Submit
 ```
 
-Now backend starts working.
-
 ---
 
-### Service
+# Phase 8 – Survey Processing
+
+FormSite sends data to
 
 ```text
 survey-service
-
-(API)
 ```
 
-Responsibilities
+Flow
 
-Receive survey
-
-↓
-
-Validate
+```text
+FormSite
 
 ↓
 
-Save
+survey-service
 
 ↓
 
-Call Database
+Validation
+
+↓
+
+common-library
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+```
+
+Survey answers are stored.
 
 ---
 
-### Database
+# Phase 9 – Database Processing
+
+Once data reaches MariaDB,
+
+database processing begins.
 
 ```text
 form_response
-(TABLE)
-```
 
-Stores
+↓
 
-```text
-Survey Answers
-```
-
-Nothing else.
-
----
-
-# Module 7 — Business Logic
-
-Now database starts processing.
-
-Objects involved
-
-```text
-TRIGGER
+Trigger
 
 ↓
 
@@ -449,268 +345,297 @@ Functions
 
 ↓
 
-Calculations
+Business Rules
 ```
 
-Purpose
+Responsibilities
 
-Convert
-
-```text
-Patient Answers
-
-↓
-
-Medical Scores
-```
+* Read survey answers
+* Validate data
+* Calculate scores
+* Update result tables
 
 ---
 
-### Tables involved
+# Phase 10 – Score Generation
 
-```text
-form_response
-
-(TABLE)
-
-↓
-
-pro_score
-
-(TABLE)
-```
-
----
-
-# Module 8 — Reporting
-
-Doctor doesn't want
-
-100 survey answers.
-
-Doctor wants
-
-```text
-Patient Score
-
-↓
-
-Previous Score
-
-↓
-
-Improvement
-```
-
----
-
-Application reads
-
-```text
-pro_score
-(TABLE)
-```
-
----
-
-### API
-
-Usually
-
-```text
-patient-service
-```
+Database calculates
 
 Example
 
 ```text
-GET
+Clinical Scores
 
-/patients/{id}/scores
+↓
+
+Recovery Status
+
+↓
+
+Progress
+
+↓
+
+Assessment
 ```
 
----
-
-Returns
-
-```json
-{
-  "harris":91,
-  "ikdc":84,
-  "womac":78
-}
-```
-
----
-
-# Module 9 — Doctor Dashboard
-
-Doctor opens patient.
-
-UI
+Results stored in
 
 ```text
+pro_score
+```
+
+---
+
+# Phase 11 – Doctor Dashboard
+
+Doctor opens dashboard.
+
+Flow
+
+```text
+Angular
+
+↓
+
+patient-service
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
+pro_score
+
+↓
+
+Dashboard
+```
+
+Doctor sees
+
+* Current Score
+* Previous Score
+* Trend
+* Recovery Progress
+
+---
+
+# Phase 12 – Follow-up
+
+Recovery usually takes months.
+
+Patient may receive
+
+* 6 Week Survey
+* 3 Month Survey
+* 6 Month Survey
+* 1 Year Survey
+
+Each survey repeats the same process.
+
+```text
+Survey
+
+↓
+
+Database
+
+↓
+
+Score
+
+↓
+
+Dashboard
+```
+
+Doctor compares recovery over time.
+
+---
+
+# Scheduler Service Responsibilities
+
+Not every task happens immediately.
+
+Some jobs run automatically.
+
+Example
+
+```text
+12:00 AM
+
+↓
+
+scheduler-service
+
+↓
+
+Find Pending Surveys
+
+↓
+
+notification-service
+
+↓
+
+Reminder Emails
+```
+
+Another example
+
+```text
+Every Morning
+
+↓
+
+Generate Reports
+```
+
+---
+
+# Notification Flow
+
+```text
+Doctor
+
+↓
+
+Assign Survey
+
+↓
+
+patient-service
+
+↓
+
+notification-service
+
+↓
+
+Email
+
+↓
+
 Patient
-
-↓
-
-Appointments
-
-↓
-
-Surveys
-
-↓
-
-Scores
-
-↓
-
-Charts
 ```
 
-Graph
+---
+
+# Authentication Flow
 
 ```text
-Harris Score
+User
 
-95
+↓
 
-|
+Angular
 
-90
+↓
 
-|
+auth-service
 
-85
+↓
 
-|
+JWT Token
 
-80
+↓
 
-|
-
-75
-
-|
-
-_____________________
-
-Jan
-
-Feb
-
-Mar
-
-Apr
+Business Services
 ```
 
-Doctor immediately understands
-
-Recovery is improving.
+Every request after login carries the JWT token.
 
 ---
 
-# Overall Application Architecture
+# Complete End-to-End Architecture
 
 ```text
-                 Receptionist
-                       │
-                       ▼
-             Patient Management
-                 (patient)
-                       │
-                       ▼
-          Appointment Management
-              (appointment)
-                       │
-                       ▼
-             Survey Assignment
-            (patient_survey)
-                       │
-                       ▼
-             Email Notification
-                       │
-                       ▼
-         External FormSite Application
-                       │
-                       ▼
-              survey-service (API)
-                       │
-                       ▼
-          form_response (TABLE)
-                       │
-                       ▼
-      Trigger + Stored Procedures
-                       │
-                       ▼
-           pro_score (TABLE)
-                       │
-                       ▼
-           patient-service (API)
-                       │
-                       ▼
-          Doctor Dashboard (UI)
+                    User
+                      │
+                      ▼
+               Angular UI
+                      │
+                      ▼
+               auth-service
+                      │
+      ┌───────────────┼────────────────┐
+      │               │                │
+      ▼               ▼                ▼
+patient-service  survey-service  admin-service
+      │               │
+      │               ▼
+      │        FormSite Integration
+      │
+      ├──────────────► notification-service
+      │
+      ▼
+common-library
+      │
+      ▼
+Prisma ORM
+      │
+      ▼
+MariaDB
+      │
+      ▼
+Tables
+Triggers
+Stored Procedures
+Functions
+      │
+      ▼
+Clinical Scores
+      │
+      ▼
+patient-service
+      │
+      ▼
+Angular Dashboard
+      │
+      ▼
+Doctor
 ```
 
 ---
 
-# Technology Stack
+# Responsibility Matrix
 
-Now let's map everything to technologies.
-
-| Layer               | Technology                 | Purpose                                                |
-| ------------------- | -------------------------- | ------------------------------------------------------ |
-| UI                  | Angular (`spri-client`)    | Doctor and staff web application                       |
-| External UI         | FormSite                   | Patient survey forms                                   |
-| Backend API         | NestJS (`patient-service`) | Patient, appointments, scores                          |
-| Backend API         | NestJS (`survey-service`)  | Survey processing                                      |
-| Shared Library      | `common-library`           | Prisma schema, shared database logic, migrations       |
-| ORM                 | Prisma                     | Database access and migrations                         |
-| Database            | MariaDB                    | Stores all application data                            |
-| Database Logic      | Stored Procedures          | Medical score calculations                             |
-| Database Automation | Triggers                   | Automatically invoke business logic after data changes |
-
----
-
-# Responsibilities by Layer
-
-| Layer             | Main Responsibility                            |
-| ----------------- | ---------------------------------------------- |
-| Angular UI        | User interaction for doctors and staff         |
-| FormSite          | Collect survey responses from patients         |
-| APIs              | Business operations and database communication |
-| Prisma            | Execute SQL and manage schema changes          |
-| MariaDB Tables    | Persist application data                       |
-| Stored Procedures | Implement complex medical scoring logic        |
-| Triggers          | Start database workflows automatically         |
-| Dashboard         | Display patient recovery information           |
+| Phase                   | Primary Component         | Responsibility                             |
+| ----------------------- | ------------------------- | ------------------------------------------ |
+| Authentication          | auth-service              | User authentication and JWT generation     |
+| Patient Registration    | patient-service           | Create and maintain patient records        |
+| Appointment Management  | patient-service           | Schedule and manage appointments           |
+| Survey Assignment       | patient-service           | Assign surveys to patients                 |
+| Notifications           | notification-service      | Send survey invitations and reminders      |
+| Survey Collection       | FormSite + survey-service | Collect and validate survey responses      |
+| Shared Data Access      | common-library            | Shared Prisma models and utilities         |
+| Database Processing     | MariaDB                   | Store responses and execute business logic |
+| Background Processing   | scheduler-service         | Scheduled reminders and maintenance tasks  |
+| Administration          | admin-service             | Manage users, roles, and configuration     |
+| Multi-Tenant Management | tenant-service            | Tenant-specific settings and configuration |
+| Reporting & Dashboard   | patient-service + Angular | Display patient recovery information       |
 
 ---
 
-## What you've learned so far
+# Key Takeaways
 
-At this point, you understand the **entire business journey**:
+At this point, you should be able to explain the SPRI platform to a new team member:
 
-1. A patient is created.
-2. An appointment is scheduled.
-3. A survey is assigned.
-4. The patient completes the survey in FormSite.
-5. The backend saves the response.
-6. The database processes the response.
-7. Scores are calculated and stored.
-8. Doctors view those scores in the SPRI application.
+* **Authentication** is handled by `auth-service`.
+* **Doctors and staff** use the Angular application.
+* **Patients** complete surveys in **FormSite**, not in the Angular application.
+* **patient-service** manages patient-related workflows such as registration, appointments, survey assignments, and dashboard data.
+* **notification-service** delivers emails and reminders.
+* **survey-service** receives and validates completed surveys.
+* **common-library** provides shared Prisma models and utilities to backend services.
+* **MariaDB** stores the data and runs the core business logic through tables, triggers, stored procedures, and functions.
+* **scheduler-service** runs time-based background jobs.
+* **admin-service** and **tenant-service** support administration and multi-tenant configuration.
 
-You now have the high-level picture.
-
-### Next: Step 5 – Repository Architecture
-
-We'll leave the business flow behind and move into the source code. We'll examine each repository (`spri-client`, `patient-service`, `survey-service`, `common-library`) and answer questions like:
-
-* Which repository owns which functionality?
-* Which repository talks directly to MariaDB?
-* Where is Prisma used?
-* Where are migrations stored?
-* How do the repositories communicate with each other?
-
-This will connect the architecture you've learned with the actual codebase you'll work on every day.
+This updated Step 4 provides the complete operational picture of how the SPRI platform functions from the moment a user logs in until a doctor reviews a patient's recovery progress.
