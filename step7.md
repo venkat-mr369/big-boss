@@ -1,792 +1,504 @@
-Excellent. From now on we'll think like a **Database Architect** rather than just a SQL developer.
-
-Up to now you've learned:
-
-* Step 1 → Business
-* Step 2 → Database Overview
-* Step 3 → Stored Procedure Flow
-* Step 4 → End-to-End Application Flow
-* Step 5 → Repository Architecture
-* Step 6 → Database Objects
-
-Now we'll connect everything.
+Yes. Based on everything we've learned so far, I would **replace the old Step 7 completely**. The old Step 7 focused only on table relationships. Now we know the system is built with multiple microservices, so Step 7 should explain **how services own the database schema and how data flows across them**.
 
 ---
 
-# Step 7 – Database Schema & Relationships
+# Step 7 – Database Schema & Service Ownership
 
-A database is not a collection of independent tables.
+By now, we know the SPRI platform is not just one application connected to one database. It is a collection of **microservices** that share a common database architecture.
 
-It is a **network of related tables**.
+As a Database Developer, you need to answer two questions for every table:
 
-Think of it as a family tree.
+1. **Which service owns this table?**
+2. **Which other services read or update this table?**
+
+Understanding service ownership makes debugging and development much easier.
+
+---
+
+# Database Architecture
 
 ```text
-Father
-   │
-   ├── Son
-   ├── Daughter
-   └── Grandchildren
+                           MariaDB
+                              │
+ ┌─────────────┬──────────────┬──────────────┬──────────────┐
+ │             │              │              │
+ ▼             ▼              ▼              ▼
+Patient     Survey        Admin         Tenant
+Tables       Tables       Tables         Tables
+ │             │              │              │
+ └─────────────┴──────────────┴──────────────┘
+                │
+         Shared Reference Tables
+                │
+                ▼
+      Stored Procedures / Functions
+                │
+                ▼
+        Views / Reports / Dashboard
 ```
 
-Similarly,
+Although all services use MariaDB, each service is primarily responsible for a specific functional area.
+
+---
+
+# Service Ownership
+
+## auth-service
+
+Owns authentication-related data.
+
+Typical objects
+
+```text
+users
+
+roles
+
+permissions
+
+user_role
+
+role_permission
+```
+
+Responsibilities
+
+* User login
+* Password management
+* Authentication
+* Authorization
+
+---
+
+## patient-service
+
+Owns patient-related business data.
+
+Typical tables
 
 ```text
 patient
-   │
-   ├── appointment
-   ├── patient_survey
-   ├── form_response
-   └── pro_score
-```
-
-Everything revolves around the patient.
-
----
-
-# Database ER Diagram (High Level)
-
-```text
-                           patient
-                    (Master Table)
-                          │
-        ┌─────────────────┼──────────────────┐
-        │                 │                  │
-        ▼                 ▼                  ▼
- appointment      patient_survey        patient_note
-        │                 │
-        │                 ▼
-        │          survey_definition
-        │
-        ▼
- form_response
-        │
-        ▼
- pro_score
-```
-
-Think of this as the backbone of the application.
-
----
-
-# 1. patient (Master Table)
-
-This is the center of the database.
-
-```text
-patient
-```
-
-Example
-
-| patient_id | Name | MRN   |
-| ---------- | ---- | ----- |
-| 1001       | John | MR001 |
-
-Every other table ultimately refers to this patient.
-
----
-
-## Relationships
-
-```text
-patient
-
-↓
 
 appointment
 
-↓
+patient_history
+
+provider
+
+clinic
+```
+
+Responsibilities
+
+* Patient registration
+* Appointment management
+* Clinical history
+* Dashboard information
+
+---
+
+## survey-service
+
+Owns survey processing.
+
+Typical tables
+
+```text
+survey_definition
 
 patient_survey
 
-↓
-
 form_response
 
-↓
-
-pro_score
+survey_status
 ```
+
+Responsibilities
+
+* Survey assignment
+* Survey submission
+* Survey tracking
 
 ---
 
-# Cardinality
+## notification-service
 
-One patient
+Owns notification-related data.
 
-↓
-
-Many appointments
+Typical tables
 
 ```text
-Patient
+notification
 
-↓
+email_queue
 
-Appointment 1
+sms_queue
 
-Appointment 2
-
-Appointment 3
+notification_template
 ```
 
-Database notation
+Responsibilities
 
-```text
-1 ---- N
-```
+* Email
+* SMS
+* Reminder tracking
 
 ---
 
-# Patient → Appointment
+## scheduler-service
+
+Usually owns scheduled-job metadata.
+
+Typical tables
 
 ```text
-patient
----------------------
-patient_id (PK)
+job_schedule
 
-appointment
----------------------
-appointment_id (PK)
+job_history
 
-patient_id (FK)
+job_execution
 ```
 
-Relationship
+Responsibilities
 
-```text
-One Patient
-
-↓
-
-Many Appointments
-```
+* Scheduled jobs
+* Background processing
+* Retry management
 
 ---
 
-# Patient → Surveys
+## admin-service
 
-One patient may receive multiple surveys.
+Owns administration data.
+
+Typical tables
+
+```text
+department
+
+physician
+
+facility
+
+organization_settings
+```
+
+Responsibilities
+
+* Administrative configuration
+* Master data
+* User administration
+
+---
+
+## tenant-service
+
+Owns tenant configuration.
+
+Typical tables
+
+```text
+tenant
+
+tenant_configuration
+
+branding
+
+domains
+```
+
+Responsibilities
+
+* Multi-tenant configuration
+* Branding
+* Environment settings
+
+---
+
+# Shared Tables
+
+Some tables are shared across multiple services.
 
 Example
 
 ```text
-John
-
-↓
-
-Pre Surgery Survey
-
-↓
-
-6 Weeks Survey
-
-↓
-
-3 Months Survey
-
-↓
-
-1 Year Survey
+patient
 ```
 
-Database
+Used by
 
 ```text
-patient
+patient-service
 
-↓
+survey-service
 
-patient_survey
+notification-service
 ```
 
----
-
-# Patient → Survey Response
-
-Every assigned survey may produce one response.
+Example
 
 ```text
-patient
-
-↓
-
-patient_survey
-
-↓
-
 form_response
 ```
 
-Example
+Written by
 
 ```text
-Survey Assigned
+survey-service
+```
 
-↓
+Read by
 
-Patient Submitted
+```text
+patient-service
+```
 
-↓
+Processed by
 
-Response Saved
+```text
+Stored Procedures
 ```
 
 ---
 
-# Patient → PRO Score
-
-Each completed survey generates one or more scores.
+# Logical Database Flow
 
 ```text
-patient
-
-↓
-
-form_response
-
-↓
-
-pro_score
-```
-
-Example
-
-```text
-Patient
-
-↓
-
-Survey
-
-↓
-
-Harris Score
-
-↓
-
-IKDC Score
-
-↓
-
-WOMAC Score
-```
-
----
-
-# One-to-Many Relationships
-
-The most common relationship.
-
-Example
-
-```text
-Patient
-
-↓
-
-Appointment
-
-Appointment
-
-Appointment
-
-Appointment
-```
-
-Database
-
-```text
-patient
-
-1
-
-↓
-
-N
-
-appointment
-```
-
----
-
-# One-to-One Relationship
-
-Sometimes
-
-One record
-
-↓
-
-One record
-
-Example
-
-```text
-Patient
-
-↓
-
-Patient Profile
-```
-
-```text
-1
-
-↓
-
-1
-```
-
----
-
-# Many-to-Many
-
-Imagine
-
-Doctors
-
-↓
-
-Patients
-
-One doctor sees many patients.
-
-One patient visits many doctors.
-
-```text
-Doctor
-
-⇄
-
-Patient
-```
-
-Database cannot store directly.
-
-Need bridge table.
-
-```text
-doctor
-
-↓
-
-doctor_patient
-
-↓
-
-patient
-```
-
----
-
-# Why Foreign Keys Exist
-
-Suppose appointment table contains
-
-```text
-patient_id = 5000
-```
-
-But patient
-
-5000
-
-doesn't exist.
-
-Database becomes inconsistent.
-
-Foreign Key prevents this.
-
-```text
-patient
-
-1001
-
-↓
-
-appointment
-
-patient_id=1001
-
-✓ Valid
-```
-
----
-
-# Normalized Design
-
-Instead of storing
-
-```text
-John
-
-MR001
-
-John
-
-MR001
-
-John
-
-MR001
-```
-
-inside every table,
-
-store only
-
-```text
-patient_id
-```
-
-Example
-
-Patient Table
-
-| patient_id | Name |
-| ---------- | ---- |
-| 1001       | John |
-
-Appointment
-
-| appointment | patient_id |
-| ----------- | ---------- |
-| 2001        | 1001       |
-
-Survey
-
-| survey | patient_id |
-| ------ | ---------- |
-| 3001   | 1001       |
-
-No duplicate data.
-
----
-
-# Complete Patient Journey
-
-Let's follow John.
-
----
-
-### Step 1
-
 Patient Created
-
-```text
+       │
+       ▼
 patient
-```
-
-| patient_id | Name |
-| ---------- | ---- |
-| 1001       | John |
-
----
-
-### Step 2
-
-Appointment
-
-```text
+       │
+       ▼
+Appointment Created
+       │
+       ▼
 appointment
-```
-
-| appointment | patient_id |
-| ----------- | ---------- |
-| 2001        | 1001       |
-
----
-
-### Step 3
-
+       │
+       ▼
 Survey Assigned
-
-```text
+       │
+       ▼
 patient_survey
-```
-
-| survey | patient_id |
-| ------ | ---------- |
-| 3001   | 1001       |
-
----
-
-### Step 4
-
-Patient Submits
-
-```text
+       │
+       ▼
+Patient Completes Survey
+       │
+       ▼
 form_response
-```
-
-| response | patient_id |
-| -------- | ---------- |
-| 4001     | 1001       |
-
----
-
-### Step 5
-
-Score Created
-
-```text
+       │
+       ▼
+Trigger
+       │
+       ▼
+Stored Procedures
+       │
+       ▼
 pro_score
+       │
+       ▼
+Dashboard
 ```
-
-| score_id | patient_id |
-| -------- | ---------- |
-| 5001     | 1001       |
 
 ---
 
-Everything is connected through
+# Cross-Service Communication
+
+Although services have their own responsibilities, they collaborate.
 
 ```text
-patient_id
+patient-service
+        │
+        ▼
+notification-service
+        │
+        ▼
+Email Sent
+```
+
+```text
+survey-service
+        │
+        ▼
+MariaDB
+        │
+        ▼
+Stored Procedures
+        │
+        ▼
+patient-service
+```
+
+```text
+scheduler-service
+        │
+        ▼
+notification-service
+        │
+        ▼
+Reminder Emails
 ```
 
 ---
 
-# Real Database Flow
+# Database Object Relationships
 
 ```text
 patient
-   │
-   ▼
-appointment
-   │
-   ▼
+    │
+    ├───────────────┐
+    │               │
+    ▼               ▼
+appointment    patient_history
+    │
+    ▼
 patient_survey
-   │
-   ▼
+    │
+    ▼
 form_response
-   │
-   ▼
+    │
+    ▼
 pro_score
 ```
 
-Notice something.
+Notice something important.
 
-Each table stores **different information**.
+The **patient** remains the center of the business model.
 
-No table stores everything.
-
----
-
-# Why Split into Multiple Tables?
-
-Suppose everything was stored in one table.
-
-```text
-Patient
-
-Appointment
-
-Survey
-
-Doctor
-
-Hospital
-
-Score
-
-Address
-
-Phone
-
-Pain
-
-Walking
-
-Sports
-
-...
-```
-
-Imagine
-
-100 columns
-
-Millions of rows.
-
-Problems
-
-❌ Duplicate data
-
-❌ Slow updates
-
-❌ Large storage
-
-❌ Difficult maintenance
-
-Instead
-
-Split logically.
-
-```text
-Patient
-
-Appointment
-
-Survey
-
-Score
-```
-
-Each table has one responsibility.
+Everything ultimately relates back to the patient.
 
 ---
 
-# Primary Keys
+# Request Ownership
 
-Every table has its own identity.
+| Operation                 | Primary Service                  | Main Database Objects     |
+| ------------------------- | -------------------------------- | ------------------------- |
+| Login                     | auth-service                     | users, roles              |
+| Create Patient            | patient-service                  | patient                   |
+| Schedule Appointment      | patient-service                  | appointment               |
+| Assign Survey             | patient-service + survey-service | patient_survey            |
+| Submit Survey             | survey-service                   | form_response             |
+| Calculate Clinical Scores | MariaDB (Stored Procedures)      | form_response → pro_score |
+| Send Email                | notification-service             | notification, email_queue |
+| Run Reminder Job          | scheduler-service                | job_schedule              |
+| Configure Hospital        | tenant-service                   | tenant_configuration      |
+| Manage Users              | admin-service                    | users, roles, departments |
+
+---
+
+# Repository vs Database Ownership
+
+One mistake new developers often make is assuming every repository owns completely separate tables.
+
+Instead, think of it like this:
 
 ```text
+Repository
+       │
+       ▼
+Business Responsibility
+       │
+       ▼
+Primary Database Tables
+       │
+       ▼
+Shared Database
+```
+
+For example:
+
+```text
+patient-service
+       │
+       ▼
 patient
 
-patient_id
-```
-
-```text
 appointment
 
-appointment_id
+patient_history
 ```
 
-```text
-form_response
-
-response_id
-```
-
-```text
-pro_score
-
-score_id
-```
-
-Primary Keys are unique within their own table.
+Another service can **read** these tables, but **patient-service** is typically responsible for creating and maintaining them.
 
 ---
 
-# Foreign Keys
-
-Tables connect through foreign keys.
+# Complete Data Flow
 
 ```text
-appointment.patient_id
-
-↓
-
-patient.patient_id
-```
-
-```text
-form_response.patient_id
-
-↓
-
-patient.patient_id
-```
-
-```text
-pro_score.patient_id
-
-↓
-
-patient.patient_id
-```
-
----
-
-# Complete Relationship Diagram
-
-```text
-                      patient
-                  PK: patient_id
-                         │
-      ┌──────────────────┼──────────────────┐
-      │                  │                  │
-      ▼                  ▼                  ▼
-appointment       patient_survey      patient_note
-PK appointment_id PK survey_id        PK note_id
-FK patient_id     FK patient_id       FK patient_id
-      │                  │
-      │                  ▼
-      │          survey_definition
+Angular UI
       │
       ▼
-form_response
-PK response_id
-FK patient_id
-FK survey_id
+auth-service
       │
       ▼
-pro_score
-PK score_id
-FK patient_id
-FK response_id
+patient-service
+      │
+      ▼
+survey-service
+      │
+      ▼
+notification-service
+      │
+      ▼
+scheduler-service
+      │
+      ▼
+common-library
+      │
+      ▼
+Prisma ORM
+      │
+      ▼
+MariaDB
+      │
+      ▼
+Tables
+      │
+      ▼
+Triggers
+      │
+      ▼
+Stored Procedures
+      │
+      ▼
+Functions
+      │
+      ▼
+Views
+      │
+      ▼
+Dashboard
 ```
 
 ---
 
-# Think Like an Architect
+# Database Developer's Mindset
 
-When someone says:
-
-> "Patient score is missing."
-
-A Database Architect doesn't immediately open the `pro_score` table.
-
-They mentally trace the data flow:
+Whenever you're assigned a task, think in this order:
 
 ```text
-Was Patient Created?
-
-↓
-
-Was Appointment Created?
-
-↓
-
-Was Survey Assigned?
-
-↓
-
-Was Survey Submitted?
-
-↓
-
-Was Response Stored?
-
-↓
-
-Was Score Generated?
-
-↓
-
-Can UI Read It?
+Requirement
+      │
+      ▼
+Which Service Owns It?
+      │
+      ▼
+Which Tables Are Involved?
+      │
+      ▼
+Which Stored Procedures Run?
+      │
+      ▼
+Which APIs Read the Result?
+      │
+      ▼
+Which UI Displays It?
 ```
 
-This mindset helps you identify where the process stopped instead of jumping straight to the last table.
+This sequence will help you trace almost any feature or production issue through the system.
 
 ---
 
-# What You've Learned in Step 7
+## One suggestion before finalizing Step 7
 
-You now understand:
-
-* How the database is organized around the **patient**.
-* Why tables are split by responsibility.
-* One-to-One, One-to-Many, and Many-to-Many relationships.
-* The purpose of Primary Keys and Foreign Keys.
-* How data flows from one table to another.
-* How to trace a patient's journey through the database.
-
----
-
-## Next: Step 8 – Data Lifecycle
-
-In the next step, we'll follow **one patient record** from the moment it is created until years later when follow-up surveys, additional appointments, updated scores, reports, and archival come into play. This will help you understand how data evolves over time in the SPRI system, not just how it's stored.
+Now that you've uploaded additional repositories (`auth-service`, `admin-service`, `tenant-service`, `notification-service`, and `scheduler-service`), I recommend we inspect their actual **Prisma schema files**, **database diagrams**, and **migrations**. That will let us replace the example table names (such as `users`, `notification`, or `job_schedule`) with the **real table names used in your project**, making the training documentation match the codebase exactly.
