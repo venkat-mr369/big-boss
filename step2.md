@@ -1,333 +1,493 @@
-### Step 2 – Database Architecture
+Perfect. Since you've updated **Step 1** with the new services, let's make **Step 2** more accurate based on the complete architecture instead of the simplified version.
 
-Think of the database as a hospital filing system.
+---
 
-Every table stores a specific type of information.
+# Step 2 – SPRI System Architecture (Detailed)
+
+Before learning tables or SQL, understand **who talks to whom**.
+
+A database developer should always know:
+
+* Which service owns which functionality?
+* Which service writes to the database?
+* Which service reads from the database?
+* Which service communicates with another service?
+
+---
+
+# High-Level Architecture
 
 ```text
-                    patient
-                       │
-        ┌──────────────┼──────────────┐
-        │              │              │
-        ▼              ▼              ▼
- appointment    patient_survey   patient_note
-        │
-        ▼
- form_response
-        │
-        ▼
- pro_score
+                        Users
+                           │
+        ┌──────────────────┼──────────────────┐
+        │                  │                  │
+        ▼                  ▼                  ▼
+ Receptionist          Doctor             Patient
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           │
+                     Angular UI
+                     (spri-client)
+                           │
+                    Authentication
+                           │
+                           ▼
+                    auth-service
+                    (JWT / Roles)
+                           │
+                           ▼
+                    API Gateway*
+                           │
+ ┌────────────┬────────────┼────────────┬────────────┬────────────┐
+ ▼            ▼            ▼            ▼            ▼
+patient     survey      admin      tenant     notification
+service     service     service     service      service
+      │          │            │            │
+      └──────────┴────────────┴────────────┘
+                    │
+            scheduler-service
+                    │
+             common-library
+                    │
+                 Prisma ORM
+                    │
+                 MariaDB
 ```
 
-Let's understand each table.
+> *If your project doesn't use a dedicated API Gateway, the UI communicates directly with each backend service.
 
 ---
 
-# 1. patient (TABLE)
+# Components Overview
 
-This is the master table.
+## 1. spri-client
 
-Everything starts here.
+### Type
 
-Example:
+Frontend Application
 
-| patient_id | name | MRN     | DOB        |
-| ---------- | ---- | ------- | ---------- |
-| P1001      | John | MR12345 | 1990-05-20 |
+### Technology
 
-Purpose:
+Angular
 
-* Patient demographics
-* Medical Record Number (MRN)
-* Contact information
+### Responsibilities
 
-Relationship:
+* Login screen
+* Patient search
+* Dashboard
+* Appointment screens
+* Survey assignment
+* Reports
+* Administration
+
+---
+
+## 2. auth-service
+
+### Type
+
+Backend API
+
+### Technology
+
+NestJS
+
+### Responsibilities
+
+* User login
+* JWT generation
+* User authentication
+* Authorization
+* Role validation
+* Token verification
+
+Without authentication, no other service should be accessed.
+
+---
+
+## 3. patient-service
+
+This is one of the core business services.
+
+Responsibilities include:
+
+* Patient management
+* Appointments
+* Medical history
+* Dashboard data
+* Patient profile
+* Reading calculated scores
+
+Typical flow:
 
 ```text
-patient
-   │
-   ├── appointments
-   ├── surveys
-   ├── notes
-   └── scores
+Doctor
+
+↓
+
+patient-service
+
+↓
+
+MariaDB
 ```
 
 ---
 
-# 2. appointment (TABLE)
+## 4. survey-service
 
-One patient can have many appointments.
+Dedicated to surveys.
 
-Example:
+Responsibilities
 
-| appointment_id | patient_id | doctor   | date       |
-| -------------- | ---------- | -------- | ---------- |
-| A101           | P1001      | Dr Smith | 2026-07-20 |
+* Survey creation
+* Survey assignment
+* Receiving survey responses
+* Survey validation
+* Survey status
 
-Purpose:
-
-* Visit details
-* Doctor
-* Clinic
-* Joint type
-
----
-
-# 3. patient_survey (TABLE)
-
-This table tells us **which survey is assigned**.
-
-Example:
-
-| survey_id | patient_id | survey_type    | status |
-| --------- | ---------- | -------------- | ------ |
-| S201      | P1001      | Knee Follow-up | Sent   |
-
-This does **not** store answers.
-
-It only stores assignment information.
-
----
-
-# 4. form_response (TABLE)
-
-This is one of the most important tables.
-
-When the patient submits the survey,
-
-the answers are saved here.
-
-Example:
-
-| id    | patient_id | answers |
-| ----- | ---------- | ------- |
-| FR101 | P1001      | JSON    |
-
-Example JSON:
-
-```json
-{
-  "Pain":8,
-  "Walking":"Yes",
-  "Sports":"No"
-}
-```
-
-Or (FormSite format):
-
-```json
-{
-  "items":[
-      {
-          "id":"92",
-          "value":"8"
-      }
-  ]
-}
-```
-
-This table stores **raw data only**.
-
-No calculations happen here.
-
----
-
-# 5. Trigger
-
-Database Object
-
-```
-TRIGGER
-```
-
-Example:
-
-```
-trg_form_response_ai_pro_score
-```
-
-Meaning:
-
-```
-After Insert
-```
-
-Flow:
+Flow
 
 ```text
-INSERT into form_response
+FormSite
 
 ↓
 
-Trigger executes automatically
+survey-service
 
 ↓
 
-Stored Procedure starts
+Database
 ```
-
-Nobody manually calls the trigger.
 
 ---
 
-# 6. Stored Procedures (SP)
+## 5. notification-service
 
-These contain the business logic.
+This service communicates with users.
 
-Example:
+Responsibilities
 
-```
-spri_apply_pro_score_for_form_response
-```
-
-↓
-
-calls
-
-```
-spri_pro_calculate_for_response
-```
-
-↓
-
-calls
-
-```
-spri_pro_payload_json
-```
-
-↓
-
-calculates scores
-
-↓
-
-stores result.
-
----
-
-# 7. pro_score (TABLE)
-
-This stores calculated scores.
+* Email
+* SMS
+* Survey invitations
+* Appointment reminders
+* Notifications
 
 Example
 
-| patient_id | Harris | IKDC | WOMAC |
-| ---------- | ------ | ---- | ----- |
-| P1001      | 92     | 87   | 81    |
+```text
+Assign Survey
 
-Doctors read this table.
+↓
 
-They do **not** read `form_response`.
+notification-service
+
+↓
+
+Email
+
+↓
+
+Patient
+```
 
 ---
 
-# Data Flow
+## 6. scheduler-service
+
+Runs background jobs automatically.
+
+Examples
+
+```text
+12:00 AM
+
+↓
+
+Reminder Emails
+```
+
+```text
+Every Hour
+
+↓
+
+Pending Survey Check
+```
+
+```text
+Every Day
+
+↓
+
+Generate Reports
+```
+
+---
+
+## 7. admin-service
+
+Administrative operations.
+
+Examples
+
+* User management
+* Roles
+* Physicians
+* Clinics
+* Departments
+* System configuration
+
+Usually accessed only by administrators.
+
+---
+
+## 8. tenant-service
+
+This service indicates the application supports multiple organizations.
+
+Responsibilities
+
+* Tenant configuration
+* Hospital configuration
+* Branding
+* Domain settings
+* Feature configuration
+
+Example
+
+```text
+Hospital A
+
+↓
+
+Tenant A
+```
+
+```text
+Hospital B
+
+↓
+
+Tenant B
+```
+
+Each tenant can have different settings while using the same platform.
+
+---
+
+## 9. common-library
+
+Shared code used by all backend services.
+
+Contains
+
+* Prisma schema
+* Shared DTOs
+* Utility functions
+* Logging
+* Validation
+* Constants
+* Common models
+
+Instead of duplicating code, every service imports from here.
+
+---
+
+## 10. MariaDB
+
+The central database.
+
+Contains
+
+* Tables
+* Views
+* Indexes
+* Stored Procedures
+* Functions
+* Triggers
+* Events
+
+Every service ultimately reads or writes data here through Prisma or database logic.
+
+---
+
+# Request Flow Example – Patient Search
+
+```text
+Doctor
+
+↓
+
+Angular UI
+
+↓
+
+auth-service
+(Token Validation)
+
+↓
+
+patient-service
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
+Patient Data Returned
+
+↓
+
+Angular UI
+```
+
+---
+
+# Request Flow Example – Survey Submission
 
 ```text
 Patient
-    │
-    ▼
-patient
-(TABLE)
 
-    │
-    ▼
-appointment
-(TABLE)
+↓
 
-    │
-    ▼
-patient_survey
-(TABLE)
+FormSite
 
-    │
-    ▼
-Patient submits survey
+↓
 
-    │
-    ▼
-form_response
-(TABLE)
+survey-service
 
-    │
-    ▼
-AFTER INSERT Trigger
-(TRIGGER)
+↓
 
-    │
-    ▼
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
 Stored Procedures
-(SP)
 
-    │
-    ▼
-pro_score
-(TABLE)
+↓
 
-    │
-    ▼
-Doctor Dashboard
+Score Calculation
+
+↓
+
+Database Updated
 ```
 
 ---
 
-# Which objects are important for a DBA?
-
-| Object                                   | Type             | Responsibility                            |
-| ---------------------------------------- | ---------------- | ----------------------------------------- |
-| `patient`                                | Table            | Patient master data                       |
-| `appointment`                            | Table            | Visit details                             |
-| `patient_survey`                         | Table            | Survey assignment                         |
-| `form_response`                          | Table            | Raw survey answers                        |
-| `pro_score`                              | Table            | Calculated medical scores                 |
-| `trg_form_response_ai_pro_score`         | Trigger          | Starts score calculation automatically    |
-| `spri_apply_pro_score_for_form_response` | Stored Procedure | Creates/updates `pro_score`               |
-| `spri_pro_calculate_for_response`        | Stored Procedure | Computes the scores                       |
-| `spri_pro_payload_json`                  | Stored Procedure | Normalizes the survey JSON before scoring |
-
----
-
-# Real Example: SOPMP-1609
-
-Now you can understand where the issue happened.
+# Request Flow Example – Survey Assignment
 
 ```text
-Patient
-      │
-      ▼
-form_response
-(TABLE)
-      │
-      ▼
-Trigger
-      │
-      ▼
-Stored Procedure
-      │
-      ▼
-❌ JSON format mismatch
-      │
-      ▼
-Scores became NULL
-      │
-      ▼
-pro_score
-(TABLE)
-```
+Doctor
 
-The survey reached the database successfully, but the stored procedure could not understand the new FormSite JSON structure. As a result, the score calculation did not populate the score columns correctly.
+↓
+
+Angular UI
+
+↓
+
+patient-service
+
+↓
+
+Survey Created
+
+↓
+
+notification-service
+
+↓
+
+Email Sent
+
+↓
+
+Patient Receives Survey Link
+```
 
 ---
 
-## Before moving to Step 3
+# Overall Communication Diagram
 
-As a database developer, remember this simple rule:
+```text
+                      Angular UI
+                           │
+                    auth-service
+                           │
+      ┌────────────┬─────────────┬─────────────┐
+      ▼            ▼             ▼             ▼
+patient-service survey-service admin-service tenant-service
+      │            │             │             │
+      └────────────┴─────────────┴─────────────┘
+                    │
+         notification-service
+                    │
+         scheduler-service
+                    │
+            common-library
+                    │
+                 Prisma ORM
+                    │
+                 MariaDB
+```
 
-* **Tables** store data.
-* **Triggers** automatically react to data changes.
-* **Stored Procedures** implement business logic.
-* **APIs** call the database.
-* **UI** displays the results.
+---
 
-In **Step 3**, we'll go deeper into the **Stored Procedure call flow**. We'll trace exactly which stored procedure calls which other procedure, what parameters are passed, and how a single survey submission travels through the database until a row is inserted into `pro_score`. This is the key to understanding tickets like SOPMP-1609.
+# Responsibilities Matrix
+
+| Component            | Responsibility                   | Database Access               |
+| -------------------- | -------------------------------- | ----------------------------- |
+| spri-client          | User Interface                   | ❌ No                          |
+| auth-service         | Authentication & Authorization   | ✅ Yes                         |
+| patient-service      | Patient & Appointment Management | ✅ Yes                         |
+| survey-service       | Survey Processing                | ✅ Yes                         |
+| notification-service | Email & SMS Notifications        | Usually for logging/templates |
+| scheduler-service    | Scheduled Background Jobs        | ✅ Yes                         |
+| admin-service        | System Administration            | ✅ Yes                         |
+| tenant-service       | Multi-tenant Configuration       | ✅ Yes                         |
+| common-library       | Shared Prisma & Utilities        | Used by all services          |
+| MariaDB              | Data Storage & Business Logic    | Core database                 |
+
+---
+
+## What you should remember from Step 2
+
+Think of the system in three layers:
+
+```text
+Presentation Layer
+    ↓
+spri-client (Angular)
+
+Business Layer
+    ↓
+auth-service
+patient-service
+survey-service
+admin-service
+tenant-service
+notification-service
+scheduler-service
+
+Data Layer
+    ↓
+common-library
+Prisma ORM
+MariaDB
+```
+
+This layered architecture is the foundation for everything else. As we continue, every API, table, stored procedure, and Jira issue can be placed into one of these layers, making it much easier to understand where a problem or feature belongs.
+
+For **Step 3**, we'll drill into the **request lifecycle**—following a single user action (such as "Create Patient" or "Assign Survey") across all these services until the data is committed to the database. This will help you understand exactly how the microservices collaborate.
