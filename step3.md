@@ -1,645 +1,536 @@
-Excellent. This is the most important step. Once you understand this, you'll be able to debug most database tickets in this project.
+Excellent. Since **Step 2** now includes the complete microservices architecture, **Step 3** should no longer start directly from `survey-service`. Instead, it should explain **how a request travels through the system before reaching the database**.
 
-# Step 3 – Stored Procedure Flow (SP Call Chain)
+I recommend replacing the previous Step 3 with the version below.
 
-Let's trace what happens **after the patient clicks Submit**.
+---
 
-Imagine the patient completes the survey.
+# Step 3 – Request Lifecycle & Service Communication
+
+Now that we understand the system architecture, let's see **how a single request travels through the application**.
+
+Think of every user action as a journey.
+
+Example actions:
+
+* Login
+* Create Patient
+* Assign Survey
+* Submit Survey
+* View Dashboard
+
+Although these are different operations, they all follow a similar lifecycle.
+
+---
+
+# High-Level Request Flow
+
+```text
+                 User
+                  │
+                  ▼
+          Angular UI (spri-client)
+                  │
+                  ▼
+          auth-service (JWT Validation)
+                  │
+                  ▼
+           Business Service
+(patient-service / survey-service /
+ admin-service / tenant-service)
+                  │
+                  ▼
+          common-library (Prisma)
+                  │
+                  ▼
+               MariaDB
+                  │
+                  ▼
+      Triggers / Stored Procedures
+                  │
+                  ▼
+              Tables Updated
+                  │
+                  ▼
+          JSON Response Returned
+                  │
+                  ▼
+             Angular UI
+                  │
+                  ▼
+                 User
+```
+
+---
+
+# Request 1 – User Login
+
+### Step 1
+
+User opens
+
+```text
+https://spri.company.com
+```
+
+---
+
+### Step 2
+
+Angular displays
+
+```text
+Login Screen
+```
+
+---
+
+### Step 3
+
+User enters
+
+```text
+Username
+
+Password
+```
+
+---
+
+### Step 4
+
+Angular sends
+
+```http
+POST /login
+```
+
+to
+
+```text
+auth-service
+```
+
+---
+
+### Step 5
+
+auth-service
+
+* validates credentials
+* checks user
+* verifies password
+
+---
+
+### Step 6
+
+If successful
+
+```text
+Generate JWT Token
+```
+
+---
+
+### Step 7
+
+Angular stores
+
+```text
+JWT Token
+```
+
+Every future request includes this token.
+
+---
+
+# Request 2 – Search Patient
+
+```text
+Doctor
+
+↓
+
+Angular
+
+↓
+
+JWT Token
+
+↓
+
+patient-service
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
+Patient Table
+
+↓
+
+JSON
+
+↓
+
+Angular
+
+↓
+
+Doctor
+```
+
+---
+
+# Request 3 – Create Patient
+
+```text
+Receptionist
+
+↓
+
+Angular
+
+↓
+
+auth-service
+
+↓
+
+patient-service
+
+↓
+
+Validation
+
+↓
+
+Prisma
+
+↓
+
+INSERT INTO patient
+
+↓
+
+MariaDB
+
+↓
+
+Success
+
+↓
+
+Angular
+```
+
+---
+
+# Request 4 – Assign Survey
+
+```text
+Doctor
+
+↓
+
+Angular
+
+↓
+
+patient-service
+
+↓
+
+Create Survey Assignment
+
+↓
+
+Database
+
+↓
+
+notification-service
+
+↓
+
+Email Sent
+
+↓
+
+Patient Receives Survey Link
+```
+
+Notice that **patient-service** is responsible for creating the assignment, while **notification-service** is responsible for delivering it.
+
+---
+
+# Request 5 – Patient Submits Survey
+
+This is the most important flow for a Database Developer.
 
 ```text
 Patient
 
 ↓
-
-Clicks Submit
-```
-
-The database receives the survey.
-
-Now everything happens automatically.
-
----
-
-# Complete Flow
-
-```text
-Patient
-   │
-   ▼
-survey-service
-(API)
-   │
-   ▼
-INSERT INTO form_response
-(TABLE)
-   │
-   ▼
-AFTER INSERT Trigger
-(TRIGGER)
-   │
-   ▼
-spri_apply_pro_score_for_form_response()
-(SP)
-   │
-   ▼
-spri_pro_calculate_for_response()
-(SP)
-   │
-   ▼
-spri_pro_payload_json()
-(SP)
-   │
-   ▼
-Score Calculation Procedures
-(SP)
-   │
-   ▼
-INSERT / UPDATE pro_score
-(TABLE)
-```
-
-Now let's understand every step.
-
----
-
-# Step 1
-
-## survey-service
-
-Type
-
-```
-API
-```
-
-Responsibility
-
-Receives survey data from FormSite.
-
-Example JSON
-
-```json
-{
-    "patient_id":"P1001",
-    "answers":{
-        ...
-    }
-}
-```
-
-The API saves it.
-
-SQL
-
-```sql
-INSERT INTO form_response(...)
-VALUES(...);
-```
-
-Nothing else.
-
----
-
-# Step 2
-
-## form_response
-
-Type
-
-```
-TABLE
-```
-
-Stores
-
-```text
-Response ID
-
-Patient ID
-
-External Form ID
-
-Answers JSON
-```
-
-Example
-
-| id    | patient_id | answers |
-| ----- | ---------- | ------- |
-| FR100 | P1001      | JSON    |
-
----
-
-# Step 3
-
-## Trigger fires
-
-Type
-
-```
-TRIGGER
-```
-
-Name
-
-```
-trg_form_response_ai_pro_score
-```
-
-Meaning
-
-```
-AFTER INSERT
-```
-
-Whenever a row is inserted
-
-↓
-
-Database automatically runs
-
-```sql
-CALL spri_apply_pro_score_for_form_response(...)
-```
-
-The Jira deployment checklist verifies this trigger exists. 
-
----
-
-# Step 4
-
-## spri_apply_pro_score_for_form_response()
-
-Type
-
-```
-Stored Procedure
-```
-
-Think of it as the **Manager**.
-
-It doesn't calculate scores.
-
-It coordinates everything.
-
-Responsibilities
-
-✅ Read form_response ID
-
-↓
-
-Call calculator
-
-↓
-
-Receive scores
-
-↓
-
-Insert or Update pro_score
-
-Think
-
-```text
-Manager
-
-↓
-
-Employee 1
-
-↓
-
-Employee 2
-
-↓
-
-Store result
-```
-
----
-
-# Step 5
-
-## spri_pro_calculate_for_response()
-
-Type
-
-```
-Stored Procedure
-```
-
-This is the main calculator.
-
-Input
-
-```text
-form_response_id
-```
-
-It performs
-
-### Read survey
-
-```sql
-SELECT answers
-FROM form_response;
-```
-
-↓
-
-Reads
-
-```text
-answers JSON
-```
-
-↓
-
-Needs
-
-```text
-Pain
-
-Walking
-
-Sports
-
-etc.
-```
-
-↓
-
-Calls JSON parser.
-
----
-
-# Step 6
-
-## spri_pro_payload_json()
-
-Type
-
-```
-Stored Procedure
-```
-
-This is a **Translator**.
-
-Imagine three people speaking different languages.
-
-Person A speaks English.
-
-Person B speaks Telugu.
-
-Person C speaks Hindi.
-
-Before they communicate,
-
-someone translates.
-
-That's exactly what
-
-```text
-spri_pro_payload_json
-```
-
-does.
-
-It converts every survey format into one standard format.
-
----
-
-Old format
-
-```json
-{
-"HARRIS":80
-}
-```
-
-Works.
-
----
-
-FormsOrt
-
-```json
-{
-"answers":{
-"HARRIS":80
-}
-}
-```
-
-Works.
-
----
-
-Escaped JSON
-
-```json
-"{\"HARRIS\":80}"
-```
-
-Works.
-
----
 
 FormSite
 
-```json
-{
-"items":[]
-}
-```
+↓
 
-Originally
-
-❌ Didn't work.
-
-The SQL comments in the fix describe these four supported JSON shapes and explain that FormSite's `items` array needed special handling. 
-
----
-
-# Step 7
-
-## New Procedure (SOPMP-1609)
-
-```
-spri_pro_flatten_formsite_items()
-```
-
-Purpose
-
-Translate
-
-```text
-92
+survey-service
 
 ↓
 
-LYS_SWL
-```
-
-Translate
-
-```text
-311
+Validation
 
 ↓
 
-DATE_EXAM
+common-library
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
+INSERT INTO form_response
+
+↓
+
+Trigger
+
+↓
+
+Stored Procedures
+
+↓
+
+Score Calculation
+
+↓
+
+UPDATE pro_score
+
+↓
+
+Success
 ```
-
-using
-
-```
-spri_formsite_field_map
-```
-
-Without this
-
-Calculator couldn't understand
-
-```
-92
-
-311
-
-133
-```
-
-The new procedure uses the mapping table to build a flat JSON object from the FormSite `items` array. 
 
 ---
 
-# Step 8
-
-Calculator starts
-
-Now calculator finally sees
-
-Instead of
-
-```json
-{
-"id":"92"
-}
-```
-
-It sees
-
-```json
-{
-"LYS_SWL":"8"
-}
-```
-
-Now
-
-```sql
-JSON_EXTRACT(...)
-```
-
-works.
-
-Score calculated.
-
----
-
-# Step 9
-
-Back to Manager
-
-Manager receives
+# Request 6 – Doctor Views Dashboard
 
 ```text
-Harris = 92
+Doctor
 
-IKDC = 87
+↓
 
-WOMAC = 78
+Angular
+
+↓
+
+patient-service
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+
+↓
+
+Read pro_score
+
+↓
+
+JSON
+
+↓
+
+Angular Dashboard
 ```
 
-Now
+---
 
-```sql
-INSERT
+# How Services Communicate
+
+Each service has a dedicated responsibility.
+
+```text
+Angular UI
+     │
+     ├──────────────► auth-service
+     │
+     ├──────────────► patient-service
+     │
+     ├──────────────► survey-service
+     │
+     ├──────────────► admin-service
+     │
+     └──────────────► tenant-service
+```
+
+Backend services communicate with:
+
+```text
+common-library
+
+↓
+
+Prisma
+
+↓
+
+MariaDB
+```
+
+Some services also communicate with each other.
+
+Example
+
+```text
+patient-service
+
+↓
+
+notification-service
+
+↓
+
+Email
+```
 
 or
 
-UPDATE
-```
-
-into
-
-```
-pro_score
-```
-
-The validation guide in the Jira even includes running `CALL spri_apply_pro_score_for_form_response('<FORM_RESPONSE_ID>');` and then checking that the `pro_score` row exists. 
-
----
-
-# Stored Procedure Relationship
-
-Think of this hierarchy.
-
 ```text
-spri_apply_pro_score_for_form_response()
-                │
-                │ calls
-                ▼
-spri_pro_calculate_for_response()
-                │
-                │ calls
-                ▼
-spri_pro_payload_json()
-                │
-                │ calls (only for FormSite)
-                ▼
-spri_pro_flatten_formsite_items()
-                │
-                ▼
-Returns normalized JSON
-                │
-                ▼
-Calculator computes scores
-                │
-                ▼
-Returns result
-                │
-                ▼
-pro_score updated
+scheduler-service
+
+↓
+
+notification-service
+
+↓
+
+Reminder Emails
 ```
 
 ---
 
-# Where did SOPMP-1609 fail?
+# Complete Survey Processing Flow
 
-Everything above was working.
-
-Problem occurred here
+This combines everything you've learned so far.
 
 ```text
 Patient
-
-↓
-
-form_response
-
-↓
-
-Trigger
-
-↓
-
-Manager SP
-
-↓
-
-Calculator SP
-
-↓
-
-JSON Parser
-
-↓
-
-❌ Could not understand FormSite JSON
-
-↓
-
-NULL
-
-↓
-
-pro_score
-```
-
-That means
-
-* Trigger ✅
-* Manager SP ✅
-* Calculator SP ✅
-* JSON Parser ❌
-
-The parser could not extract values because the incoming JSON format had changed.
-
----
-
-# Think of it like a factory
-
-```
-Patient
-
-↓
-
-Raw Material
-
-↓
-
-Machine 1
-
-↓
-
-Machine 2
-
-↓
-
-Machine 3
-
-↓
-
-Finished Product
-```
-
-Real project
-
-```
-Patient
-
-↓
-
-form_response
-
-↓
-
-Trigger
-
-↓
-
-Manager SP
-
-↓
-
-Calculator SP
-
-↓
-
-JSON Translator
-
-↓
-
-Score Calculator
-
-↓
-
-pro_score
+   │
+   ▼
+FormSite
+   │
+   ▼
+survey-service
+   │
+   ▼
+common-library
+   │
+   ▼
+Prisma ORM
+   │
+   ▼
+MariaDB
+   │
+   ▼
+form_response (TABLE)
+   │
+   ▼
+AFTER INSERT Trigger
+   │
+   ▼
+Stored Procedure
+   │
+   ▼
+Functions (if required)
+   │
+   ▼
+pro_score (TABLE)
+   │
+   ▼
+patient-service
+   │
+   ▼
+Angular UI
+   │
+   ▼
+Doctor Dashboard
 ```
 
 ---
 
-# As a DBA, when debugging an issue, ask these questions in order:
+# Service Responsibilities
 
-1. Did a row get inserted into `form_response`?
-2. Did the trigger execute?
-3. Was `spri_apply_pro_score_for_form_response()` called?
-4. Did `spri_pro_calculate_for_response()` return any values?
-5. Did `spri_pro_payload_json()` produce valid normalized JSON?
-6. Was a row inserted or updated in `pro_score`?
-7. If the row exists but scores are `NULL`, did the JSON parser successfully extract the required fields?
+| Service                  | Responsibility                    |
+| ------------------------ | --------------------------------- |
+| **auth-service**         | Authentication, JWT, Roles        |
+| **patient-service**      | Patients, Appointments, Dashboard |
+| **survey-service**       | Survey Processing                 |
+| **notification-service** | Email & SMS Notifications         |
+| **scheduler-service**    | Background Jobs                   |
+| **admin-service**        | Administration                    |
+| **tenant-service**       | Multi-tenant Configuration        |
+| **common-library**       | Shared Prisma, Utilities, DTOs    |
+| **MariaDB**              | Data Storage & Business Logic     |
 
-This step-by-step approach is exactly how you narrow the problem to the correct layer instead of guessing.
+---
 
-In **Step 4**, we'll go even deeper by tracing **one actual survey submission** from the `form_response.answers` JSON all the way to individual columns in `pro_score`, using real SQL examples from the project. That will make tickets like SOPMP-1609 much easier to troubleshoot.
+# Key Takeaways
+
+As a Database Developer, you should think in layers:
+
+```text
+User
+  │
+  ▼
+Angular UI
+  │
+  ▼
+Authentication
+  │
+  ▼
+Business Service
+  │
+  ▼
+Prisma (common-library)
+  │
+  ▼
+MariaDB
+  │
+  ▼
+Triggers
+  │
+  ▼
+Stored Procedures
+  │
+  ▼
+Tables
+```
+
+This layered view helps you quickly identify where a problem belongs. For example:
+
+* Login issue → `auth-service`
+* Survey submission issue → `survey-service`
+* Email not received → `notification-service`
+* Patient data issue → `patient-service`
+* Data not stored or calculated correctly → MariaDB (tables, triggers, stored procedures)
+
+This updated Step 3 now aligns with the expanded microservices architecture introduced in the updated Step 2, while still preserving the detailed database processing flow that is most relevant to your role as a Database Developer.
